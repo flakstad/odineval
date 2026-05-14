@@ -337,9 +337,19 @@ where point is just after the inner call."
           (when (< (point) open)
             (cons (point) end)))))))
 
-(defun odineval-current-line-or-call-unit ()
-  "Return current call expression before point, falling back to current line."
-  (if-let ((bounds (odineval--call-bounds-before-point)))
+(defun odineval--atom-bounds-before-point ()
+  "Return bounds of the Odin atom ending at or before point."
+  (save-excursion
+    (skip-chars-backward " \t\n")
+    (let ((end (point)))
+      (skip-chars-backward "A-Za-z0-9_\\.$")
+      (when (< (point) end)
+        (cons (point) end)))))
+
+(defun odineval-current-line-call-or-atom-unit ()
+  "Return current call/atom before point, falling back to current line."
+  (if-let ((bounds (or (odineval--call-bounds-before-point)
+                       (odineval--atom-bounds-before-point))))
       (cons (buffer-substring-no-properties (car bounds) (cdr bounds)) bounds)
     (cons (odineval-current-line-code)
           (cons (line-beginning-position) (line-end-position)))))
@@ -352,11 +362,11 @@ where point is just after the inner call."
   "Return (CODE . BOUNDS) for the current eval unit.
 When point is inside a scratch // block, the unit is the whole block.
 Otherwise prefer the parenthesized call ending before point, falling back to the
-current line."
+atom before point, then the current line."
   (if (odineval--comment-line-p)
       (let ((bounds (odineval--comment-block-bounds)))
         (cons (odineval-comment-block-code) bounds))
-    (odineval-current-line-or-call-unit)))
+    (odineval-current-line-call-or-atom-unit)))
 
 ;;;###autoload
 (defun odineval-run-expression (code)
@@ -583,7 +593,7 @@ With prefix argument NO-PRINT, treat the code as statements."
   (local-set-key (kbd "C-c C-p") #'odineval-popup-line)
   (local-set-key (kbd "C-c C-i") #'odineval-insert-line-result)
   (local-set-key (kbd "C-c C-r") #'odineval-run-region)
-  (local-set-key (kbd "C-c C-c") #'odineval-run-proc)
+  (local-set-key (kbd "C-c C-c") #'odineval-run-line)
   (local-set-key (kbd "C-c C-x") #'odineval-run-comment-block)
   (local-set-key (kbd "C-c C-k") #'odineval-check-expression)
   (local-set-key (kbd "C-c C-a") #'odineval-run-package)

@@ -98,7 +98,7 @@ Default `odin-mode` keys installed by `odineval-setup-odin-mode-keys`:
 - `C-c C-p`: run current call, line, or `//` block and open the result buffer
 - `C-c C-i`: insert result as a `// => ...` comment below the eval unit
 - `C-c C-r`: run region
-- `C-c C-c`: run proc
+- `C-c C-c`: same as `C-c C-e`, aligned with CIDER eval-top-level muscle memory
 - `C-c C-x`: run uncommented `//` block at point
 - `C-c C-k`: check prompted expression
 - `C-c C-a`: run ordinary package main via `odin run .`
@@ -138,6 +138,14 @@ fmt.println(add(5, 2)|)
 ```
 
 `C-c C-e` evaluates `add(5, 2)`, not the full `fmt.println(...)` line.
+
+If point is inside a call just after an atom, that atom is used:
+
+```odin
+add(5, 2|)
+```
+
+`C-c C-e` evaluates `2`.
 
 Comment-block eval uses internal mode: the package is copied to a scratch
 directory, an existing entry `main` is renamed, and the generated eval `main`
