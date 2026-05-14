@@ -4,6 +4,7 @@
 ;; displays results in Emacs buffers, and leaves Odin semantics to Odin itself.
 
 (require 'compile)
+(require 'seq)
 (require 'subr-x)
 
 (defgroup odineval nil
@@ -145,6 +146,23 @@ treated as command output."
         (overlay-put ov 'evaporate t)
         (overlay-put ov 'after-string display-text)))))
 
+(defun odineval--insert-comment-result (buffer line-end text exit-code)
+  "Insert TEXT as a // => result comment in BUFFER after LINE-END."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (save-excursion
+        (goto-char line-end)
+        (forward-line 1)
+        (while (and (not (eobp))
+                    (looking-at-p "[[:space:]]*//[[:space:]]*=>"))
+          (delete-region (line-beginning-position)
+                         (min (point-max) (1+ (line-end-position)))))
+        (let* ((trimmed (string-trim text))
+               (single-line (replace-regexp-in-string "[\n\r\t ]+" " " trimmed)))
+          (insert (format "// => %s%s\n"
+                          (if (zerop exit-code) "" (format "<exit %s> " exit-code))
+                          single-line)))))))
+
 (defun odineval--display-generated (generated)
   "Display GENERATED Odin in a separate buffer when non-nil."
   (when generated
@@ -177,12 +195,13 @@ possible."
     (display-buffer result-buffer)
     (message "odineval exited %s" exit-code)))
 
-(defun odineval--run (command package code &optional no-print show internal display)
+(defun odineval--run (command package code &optional no-print show internal display bounds)
   "Run odineval COMMAND for PACKAGE and CODE."
   (setq odineval--last-source-buffer (current-buffer))
   (let* ((source-buffer (current-buffer))
-         (bounds (and (eq display 'inline)
-                      (cons (line-beginning-position) (line-end-position))))
+         (bounds (or bounds
+                     (and (memq display '(inline comment))
+                          (cons (line-beginning-position) (line-end-position)))))
          (default-directory (file-name-as-directory (expand-file-name odineval-root)))
          (stdout-buffer (generate-new-buffer " *odineval-stdout*"))
          (stderr-buffer (generate-new-buffer " *odineval-stderr*"))
@@ -211,6 +230,13 @@ possible."
                 (odineval--display-generated generated)
                 (odineval--show-inline-result source-buffer (car bounds) (cdr bounds) visible exit-code)
                 (message "odineval exited %s" exit-code)))
+             ('comment
+              (let* ((visible-data (odineval--visible-output stdout stderr show))
+                     (generated (car visible-data))
+                     (visible (cdr visible-data)))
+                (odineval--display-generated generated)
+                (odineval--insert-comment-result source-buffer (cdr bounds) visible exit-code)
+                (message "odineval exited %s" exit-code)))
              (_
               (odineval--display-output stdout stderr exit-code show)))))))))
 
@@ -231,7 +257,14 @@ possible."
   "Return non-nil when the current line starts with an Odin line comment."
   (save-excursion
     (beginning-of-line)
-    (looking-at-p "[[:space:]]*//")))
+    (and (looking-at-p "[[:space:]]*//")
+         (not (looking-at-p "[[:space:]]*//[[:space:]]*=>")))))
+
+(defun odineval--result-comment-line-p ()
+  "Return non-nil when the current line is an odineval // => result line."
+  (save-excursion
+    (beginning-of-line)
+    (looking-at-p "[[:space:]]*//[[:space:]]*=>")))
 
 (defun odineval--comment-block-bounds ()
   "Return bounds for the contiguous // comment block around point."
@@ -255,8 +288,15 @@ possible."
 (defun odineval-comment-block-code ()
   "Return uncommented code from the contiguous // comment block around point."
   (let* ((bounds (odineval--comment-block-bounds))
-         (text (buffer-substring-no-properties (car bounds) (cdr bounds))))
-    (string-trim (odineval--strip-line-comment-prefix text))))
+         (text (buffer-substring-no-properties (car bounds) (cdr bounds)))
+         (without-results
+          (string-join
+           (seq-remove
+            (lambda (line)
+              (string-match-p "\\`[[:space:]]*//[[:space:]]*=>" line))
+            (split-string text "\n"))
+           "\n")))
+    (string-trim (odineval--strip-line-comment-prefix without-results))))
 
 (defun odineval-current-line-code ()
   "Return code from the current line, stripping a leading // if present."
@@ -265,6 +305,16 @@ possible."
                 (line-beginning-position)
                 (line-end-position)))))
     (string-trim (odineval--strip-line-comment-prefix line))))
+
+(defun odineval-current-unit ()
+  "Return (CODE . BOUNDS) for the current eval unit.
+When point is inside a scratch // block, the unit is the whole block.
+Otherwise the unit is the current line."
+  (if (odineval--comment-line-p)
+      (let ((bounds (odineval--comment-block-bounds)))
+        (cons (odineval-comment-block-code) bounds))
+    (cons (odineval-current-line-code)
+          (cons (line-beginning-position) (line-end-position)))))
 
 ;;;###autoload
 (defun odineval-run-expression (code)
@@ -292,33 +342,65 @@ possible."
 
 ;;;###autoload
 (defun odineval-run-line (&optional no-print)
-  "Run the current line as Odin code inside the current package.
-If the line starts with `//`, strip the comment prefix first. This is intended
-for Clojure-style scratch lines such as:
+  "Run the current eval unit and show the result inline.
+If point is inside a scratch // block, run the whole block. Otherwise run the
+current line. This is intended for Clojure-style scratch lines such as:
 
   // add(5,2)
 
 With prefix argument NO-PRINT, treat the line as statements."
   (interactive "P")
-  (odineval--run "run"
-                 (odineval-package-directory)
-                 (odineval-current-line-code)
-                 (or no-print odineval-default-no-print)
-                 odineval-show-generated
-                 t
-                 'inline))
+  (let ((unit (odineval-current-unit)))
+    (odineval--run "run"
+                   (odineval-package-directory)
+                   (car unit)
+                   (or no-print odineval-default-no-print)
+                   odineval-show-generated
+                   t
+                   'inline
+                   (cdr unit))))
+
+;;;###autoload
+(defun odineval-insert-line-result (&optional no-print)
+  "Run the current eval unit and insert the result as a // => comment."
+  (interactive "P")
+  (let ((unit (odineval-current-unit)))
+    (odineval--run "run"
+                   (odineval-package-directory)
+                   (car unit)
+                   (or no-print odineval-default-no-print)
+                   odineval-show-generated
+                   t
+                   'comment
+                   (cdr unit))))
 
 ;;;###autoload
 (defun odineval-popup-line (&optional no-print)
-  "Run the current line and show output in the odineval result buffer."
+  "Run the current eval unit and show output in the odineval result buffer."
   (interactive "P")
-  (odineval--run "run"
-                 (odineval-package-directory)
-                 (odineval-current-line-code)
-                 (or no-print odineval-default-no-print)
-                 odineval-show-generated
-                 t
-                 'buffer))
+  (let ((unit (odineval-current-unit)))
+    (odineval--run "run"
+                   (odineval-package-directory)
+                   (car unit)
+                   (or no-print odineval-default-no-print)
+                   odineval-show-generated
+                   t
+                   'buffer
+                   (cdr unit))))
+
+;;;###autoload
+(defun odineval-insert-comment-block-result (&optional no-print)
+  "Run the current // comment block and insert a // => result comment."
+  (interactive "P")
+  (let ((bounds (odineval--comment-block-bounds)))
+    (odineval--run "run"
+                   (odineval-package-directory)
+                   (odineval-comment-block-code)
+                   (or no-print odineval-default-no-print)
+                   odineval-show-generated
+                   t
+                   'comment
+                   bounds)))
 
 ;;;###autoload
 (defun odineval-check-line (&optional no-print)
@@ -376,7 +458,8 @@ This is the Odin analogue of keeping exploratory calls in a Clojure
                  (or no-print odineval-default-no-print)
                  odineval-show-generated
                  t
-                 'buffer))
+                 'inline
+                 (odineval--comment-block-bounds)))
 
 ;;;###autoload
 (defun odineval-check-comment-block (&optional no-print)
@@ -456,6 +539,7 @@ With prefix argument NO-PRINT, treat the code as statements."
   (odineval--enable-inline-result-clearing)
   (local-set-key (kbd "C-c C-e") #'odineval-run-line)
   (local-set-key (kbd "C-c C-p") #'odineval-popup-line)
+  (local-set-key (kbd "C-c C-i") #'odineval-insert-line-result)
   (local-set-key (kbd "C-c C-r") #'odineval-run-region)
   (local-set-key (kbd "C-c C-c") #'odineval-run-proc)
   (local-set-key (kbd "C-c C-x") #'odineval-run-comment-block)

@@ -81,7 +81,7 @@ Minimal setup:
 Default commands:
 
 - `M-x odineval-run-expression`: prompt for an Odin expression and print result
-- `M-x odineval-run-line`: run current line, stripping leading `//`
+- `M-x odineval-run-line`: run current line, or whole `//` block at point
 - `M-x odineval-run-region`: run selected expression; with prefix, run as statements
 - `M-x odineval-check-expression`: compile-check a generated runner
 - `M-x odineval-run-comment-block`: run a contiguous `//` comment block as code
@@ -94,8 +94,9 @@ Default commands:
 
 Default `odin-mode` keys installed by `odineval-setup-odin-mode-keys`:
 
-- `C-c C-e`: run current line, stripping leading `//`, and show result inline
-- `C-c C-p`: run current line and open the result buffer
+- `C-c C-e`: run current line or `//` block and show result inline
+- `C-c C-p`: run current line or `//` block and open the result buffer
+- `C-c C-i`: insert result as a `// => ...` comment below the eval unit
 - `C-c C-r`: run region
 - `C-c C-c`: run proc
 - `C-c C-x`: run uncommented `//` block at point
@@ -116,9 +117,18 @@ the comment block:
 // some_package_local_proc(1, 2)
 ```
 
-Place point on either line and run `M-x odineval-run-comment-block` or
-`C-c C-x`. With a prefix argument, the block is treated as statements and
+Place point on either line and run `C-c C-e` for an inline result, `C-c C-p`
+for the result buffer, or `C-c C-i` to insert the result below the block as a
+comment. With a prefix argument, the block is treated as statements and
 `--no-print` is passed to the CLI.
+
+Inserted result comments look like this and are ignored by later block evals:
+
+```odin
+// x := 1
+// add(x, 3)
+// => 4
+```
 
 Comment-block eval uses internal mode: the package is copied to a scratch
 directory, an existing entry `main` is renamed, and the generated eval `main`
