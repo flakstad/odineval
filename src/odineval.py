@@ -33,7 +33,12 @@ def render_runner(config: EvalConfig) -> str:
 
     body: list[str] = []
     if config.print_result:
-        body.append(f"    result := {config.code}")
+        lines = code_lines(config.code)
+        if len(lines) > 1:
+            body.extend(f"    {line}" for line in lines[:-1])
+            body.append(f"    result := {lines[-1]}")
+        else:
+            body.append(f"    result := {config.code}")
         body.append("    fmt.println(result)")
     else:
         for line in config.code.splitlines():
@@ -59,7 +64,12 @@ def render_internal_runner(config: EvalConfig) -> str:
 
     body: list[str] = []
     if config.print_result:
-        body.append(f"    result := {config.code}")
+        lines = code_lines(config.code)
+        if len(lines) > 1:
+            body.extend(f"    {line}" for line in lines[:-1])
+            body.append(f"    result := {lines[-1]}")
+        else:
+            body.append(f"    result := {config.code}")
         body.append("    fmt.println(result)")
     else:
         for line in config.code.splitlines():
@@ -77,6 +87,10 @@ def render_internal_runner(config: EvalConfig) -> str:
             "",
         ]
     )
+
+
+def code_lines(code: str) -> list[str]:
+    return [line for line in (line.strip() for line in code.splitlines()) if line]
 
 
 def write_runner(config: EvalConfig, directory: Path) -> Path:
@@ -103,6 +117,39 @@ def rename_entry_main(source: str) -> str:
     )
 
 
+DECLARATION_RE = re.compile(
+    r"^\s*(?:package\b|import\b|foreign\b|when\b|@\(|#|[A-Za-z_][A-Za-z0-9_]*\s*(?:::|:\s|:=\s*proc\b))"
+)
+
+
+def comment_top_level_scratch_lines(source: str) -> str:
+    """Comment obvious top-level scratch expressions in SOURCE.
+
+    This lets files contain Clojure-style scratch calls such as `add(5, 3)` at
+    file scope while internal eval compiles a temp copy. It is intentionally
+    conservative and line-oriented; valid declarations are left unchanged.
+    """
+    out: list[str] = []
+    depth = 0
+    for line in source.splitlines():
+        stripped = line.strip()
+        at_top = depth == 0
+        should_comment = (
+            at_top
+            and stripped
+            and not stripped.startswith("//")
+            and not stripped.startswith("/*")
+            and not stripped.startswith("*")
+            and not stripped in {"}", "},"}
+            and not DECLARATION_RE.match(line)
+        )
+        out.append(f"// odineval scratch: {line}" if should_comment else line)
+        depth += line.count("{") - line.count("}")
+        if depth < 0:
+            depth = 0
+    return "\n".join(out) + ("\n" if source.endswith("\n") else "")
+
+
 def copy_package_for_internal_eval(package: Path, directory: Path) -> str:
     directory.mkdir(parents=True, exist_ok=True)
     package_name: str | None = None
@@ -113,6 +160,7 @@ def copy_package_for_internal_eval(package: Path, directory: Path) -> str:
         if package_name is None:
             package_name = package_name_from_source(source)
         source = rename_entry_main(source)
+        source = comment_top_level_scratch_lines(source)
         (directory / source_path.name).write_text(source, encoding="utf-8")
         copied = True
 
