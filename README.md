@@ -73,6 +73,7 @@ Minimal setup:
 Default commands:
 
 - `M-x odineval-run-expression`: prompt for an Odin expression and print result
+- `M-x odineval-run-line`: run current line, stripping leading `//`
 - `M-x odineval-run-region`: run selected expression; with prefix, run as statements
 - `M-x odineval-check-expression`: compile-check a generated runner
 - `M-x odineval-run-comment-block`: run a contiguous `//` comment block as code
@@ -82,7 +83,7 @@ Default commands:
 
 Default `odin-mode` keys installed by `odineval-setup-odin-mode-keys`:
 
-- `C-c C-e`: run prompted expression
+- `C-c C-e`: run current line, stripping leading `//`
 - `C-c C-r`: run region
 - `C-c C-c`: run proc
 - `C-c C-x`: run uncommented `//` block at point

@@ -199,6 +199,14 @@ possible."
          (text (buffer-substring-no-properties (car bounds) (cdr bounds))))
     (string-trim (odineval--strip-line-comment-prefix text))))
 
+(defun odineval-current-line-code ()
+  "Return code from the current line, stripping a leading // if present."
+  (let ((line (string-trim
+               (buffer-substring-no-properties
+                (line-beginning-position)
+                (line-end-position)))))
+    (string-trim (odineval--strip-line-comment-prefix line))))
+
 ;;;###autoload
 (defun odineval-run-expression (code)
   "Run Odin expression CODE in a generated runner for the current package."
@@ -220,6 +228,35 @@ possible."
                  odineval-default-no-print
                  odineval-show-generated
                  nil))
+
+;;;###autoload
+(defun odineval-run-line (&optional no-print)
+  "Run the current line as Odin code inside the current package.
+If the line starts with `//`, strip the comment prefix first. This is intended
+for Clojure-style scratch lines such as:
+
+  // add(5,2)
+
+With prefix argument NO-PRINT, treat the line as statements."
+  (interactive "P")
+  (odineval--run "run"
+                 (odineval-package-directory)
+                 (odineval-current-line-code)
+                 (or no-print odineval-default-no-print)
+                 odineval-show-generated
+                 t))
+
+;;;###autoload
+(defun odineval-check-line (&optional no-print)
+  "Check the current line as Odin code inside the current package.
+If the line starts with `//`, strip the comment prefix first."
+  (interactive "P")
+  (odineval--run "check"
+                 (odineval-package-directory)
+                 (odineval-current-line-code)
+                 (or no-print odineval-default-no-print)
+                 odineval-show-generated
+                 t))
 
 ;;;###autoload
 (defun odineval-run-region (start end &optional no-print)
@@ -314,7 +351,7 @@ With prefix argument NO-PRINT, treat the code as statements."
 
 (defun odineval-setup-odin-mode-keys ()
   "Install odineval keybindings in the current Odin buffer."
-  (local-set-key (kbd "C-c C-e") #'odineval-run-expression)
+  (local-set-key (kbd "C-c C-e") #'odineval-run-line)
   (local-set-key (kbd "C-c C-r") #'odineval-run-region)
   (local-set-key (kbd "C-c C-c") #'odineval-run-proc)
   (local-set-key (kbd "C-c C-x") #'odineval-run-comment-block)
