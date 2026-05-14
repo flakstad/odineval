@@ -119,7 +119,15 @@ Build/check/test commands only open `*Odin Eval*` on failure. On success they
 report in the minibuffer and leave your window layout alone. Test commands are
 an exception in one useful way: successful `odin test .` output is compacted and
 shown in the minibuffer, because the test runner's summary is the result you
-usually want to see.
+usually want to see. The default Emacs test command is:
+
+```sh
+odin test . -define:ODIN_TEST_LOG_LEVEL=warning
+```
+
+That suppresses Odin's verbose successful test-runner info logs while preserving
+warnings, errors, and the final summary. Customize `odineval-test-command` if
+you want different test runner flags.
 
 The package directory defaults to the directory of the current `.odin` file.
 That matches Odin's package model for the external-eval MVP. The project

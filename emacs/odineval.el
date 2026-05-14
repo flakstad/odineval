@@ -53,6 +53,13 @@
   :type 'boolean
   :group 'odineval)
 
+(defcustom odineval-test-command "odin test . -define:ODIN_TEST_LOG_LEVEL=warning"
+  "Odin command used by odineval test commands.
+The default suppresses the verbose successful test-runner info logs while still
+showing warnings, errors, and the final test summary."
+  :type 'string
+  :group 'odineval)
+
 (defvar odineval--last-source-buffer nil)
 
 (defun odineval-clear-inline-results ()
@@ -668,7 +675,7 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
 (defun odineval-test-package ()
   "Run `odin test .' in the current Odin package directory."
   (interactive)
-  (odineval--odin-in-package "odin test ." nil t))
+  (odineval--odin-in-package odineval-test-command nil t))
 
 ;;;###autoload
 (defun odineval-run-project ()
@@ -692,7 +699,7 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
 (defun odineval-test-project ()
   "Run `odin test .' in the current Odin project directory."
   (interactive)
-  (odineval--odin-in-project "odin test ." nil t))
+  (odineval--odin-in-project odineval-test-command nil t))
 
 ;;;###autoload
 (defun odineval-toggle-test-after-build ()
